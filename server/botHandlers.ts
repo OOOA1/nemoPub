@@ -1,6 +1,7 @@
 import { Context } from 'telegraf';
 import { storage } from './storage';
 import { updateUserSubscriptionStatus } from './subscriptionChecker';
+import { getDefectPhotosAll } from "./storage";
 
 import {
   getDefectByHumanId,
@@ -40,6 +41,11 @@ function getActiveAfter(userId: number) {
   return s;
 }
 
+function chunk<T>(arr: T[], size: number): T[][] {
+  const out: T[][] = [];
+  for (let i = 0; i < arr.length; i += size) out.push(arr.slice(i, i + size));
+  return out;
+}
 
 const RE_ID = /\b#?(D-\d{6})\b/i;
 const RE_FIXED_CAPTION = /\b(устранен[оа]?|закрыт[оа]?|fixed)\b.*\b#?(D-\d{6})\b/i;
@@ -1041,6 +1047,34 @@ async function sendPreview(ctx: Context, draft: any) {
         ],
       },
     });
+
+    // 👇 ДОБАВЛЕНО: отправляем фотографии черновика в предпросмотре
+    const photosArr = Array.isArray(draft?.photos) ? draft.photos : [];
+    if (photosArr.length > 0) {
+      // Telegram разрешает до 10 фото в альбоме — шлём пачками по 10
+      const MAX_MEDIA = 10;
+      for (let i = 0; i < photosArr.length; i += MAX_MEDIA) {
+        const chunk = photosArr.slice(i, i + MAX_MEDIA).map((p: any, idx: number) => {
+          const media: any = {
+            type: "photo",
+            media: p.telegramFileId, // мы уже сохраняем file_id тут: { telegramFileId }
+          };
+          // Можно подписать только первый кадр первой пачки
+          if (i === 0 && idx === 0) {
+            media.caption = "📸 Фотофиксация (предпросмотр)";
+          }
+          return media;
+        });
+
+        try {
+          await ctx.replyWithMediaGroup(chunk as any);
+        } catch (e) {
+          // не падаем из-за отдельных ошибок отправки медиа
+          try { console.error("[sendPreview][mediaGroup]", e); } catch {}
+        }
+      }
+    }
+
   } catch (err) {
     defReportError(ctx, "sendPreview", err);
   }
@@ -1077,6 +1111,7 @@ export async function showDefectCard(ctx: Context, humanIdRaw: string) {
   };
 
   await ctx.reply(text, { reply_markup: keyboard });
+  return d;
 }
 
 // --- Мини-карточка для списков ---
@@ -1188,13 +1223,58 @@ export async function controlMenu(ctx: Context) {
   );
 }
 
+async function sendAllDefectPhotos(ctx: Context, defectId: string, humanId: string) {
+  const photos = await getDefectPhotosAll(defectId);
+  const before = photos.filter(p => p.type === "initial" || p.type === "before");
+  const after  = photos.filter(p => p.type === "after");
+
+  // «До»
+  if (before.length) {
+    await ctx.reply(`Фото «до» для #${humanId} (${before.length} шт.)`);
+    for (const pack of chunk(before, 10)) {
+      const media = pack.map((p, i) => ({
+        type: "photo",
+        media: p.telegramFileId,
+        caption: i === 0 ? `#${humanId} · ДО (${before.length})` : undefined,
+      })) as any[];
+      await ctx.replyWithMediaGroup(media);
+    }
+  }
+
+  // «После»
+  if (after.length) {
+    await ctx.reply(`Фото «после» для #${humanId} (${after.length} шт.)`);
+    for (const pack of chunk(after, 10)) {
+      const media = pack.map((p, i) => ({
+        type: "photo",
+        media: p.telegramFileId,
+        caption: i === 0 ? `#${humanId} · ПОСЛЕ (${after.length})` : undefined,
+      })) as any[];
+      await ctx.replyWithMediaGroup(media);
+    }
+  }
+}
+
 /** Текст с #ID -> карточка */
 export async function handleIdQueryText(ctx: Context) {
   const text = (ctx.message as any)?.text as string | undefined;
   if (!text) return;
   const m = text.match(RE_ID);
   if (!m) return;
-  await showDefectCard(ctx, m[1]);
+
+  const humanId = m[1].toUpperCase();
+  // показать карточку
+  const defect = await showDefectCard(ctx, humanId); // вывод карточки и получаем объект
+  const defectId = (defect as any)?.id; // id берём из возвращённого объекта
+
+  if (defectId) {
+    await sendAllDefectPhotos(ctx, defectId, humanId);
+  } else {
+    await ctx.reply("Не удалось найти фотографии для этого дефекта.");
+  }
+
+  // опционально: включать режим «после» как раньше — если нужно, оставь:
+  // await storage.setBotSetting(afterKeyFor(ctx.from!.id), JSON.stringify({ humanId }));
 }
 
 const afterKeyFor = (uid: number | string) => `after_draft_${uid}`;

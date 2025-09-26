@@ -990,3 +990,23 @@ export async function getTopCriticalDefects(from: Date, to: Date, limit = 6) {
   }
   return out;
 }
+
+// === Photos for a defect (for sending in chat) ===
+import { eq as R_eq } from "drizzle-orm";
+
+export type RepoPhoto = { telegramFileId: string; type: "initial"|"before"|"after"; createdAt: Date };
+
+export async function getDefectPhotosAll(defectId: string): Promise<RepoPhoto[]> {
+  const rows = await db
+    .select({
+      telegramFileId: R_photos.telegramFileId,
+      type: R_photos.type,
+      createdAt: R_photos.createdAt,
+    })
+    .from(R_photos)
+    .where(R_eq(R_photos.defectId, defectId))
+    // сначала 'initial'/'before', затем 'after', внутри — по дате
+    .orderBy(R_photos.type, R_photos.createdAt);
+
+  return rows as any;
+}
