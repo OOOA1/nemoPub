@@ -1,0 +1,570 @@
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>NEMO Moscow - Админ-панель Telegram Bot</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+    tailwind.config = {
+        theme: {
+            extend: {
+                borderRadius: {
+                    lg: "var(--radius)",
+                    md: "calc(var(--radius) - 2px)",
+                    sm: "calc(var(--radius) - 4px)",
+                },
+                colors: {
+                    background: "var(--background)",
+                    foreground: "var(--foreground)",
+                    card: {
+                        DEFAULT: "var(--card)",
+                        foreground: "var(--card-foreground)",
+                    },
+                    popover: {
+                        DEFAULT: "var(--popover)",
+                        foreground: "var(--popover-foreground)",
+                    },
+                    primary: {
+                        DEFAULT: "var(--primary)",
+                        foreground: "var(--primary-foreground)",
+                    },
+                    secondary: {
+                        DEFAULT: "var(--secondary)",
+                        foreground: "var(--secondary-foreground)",
+                    },
+                    muted: {
+                        DEFAULT: "var(--muted)",
+                        foreground: "var(--muted-foreground)",
+                    },
+                    accent: {
+                        DEFAULT: "var(--accent)",
+                        foreground: "var(--accent-foreground)",
+                    },
+                    destructive: {
+                        DEFAULT: "var(--destructive)",
+                        foreground: "var(--destructive-foreground)",
+                    },
+                    border: "var(--border)",
+                    input: "var(--input)",
+                    ring: "var(--ring)",
+                    chart: {
+                        "1": "var(--chart-1)",
+                        "2": "var(--chart-2)",
+                        "3": "var(--chart-3)",
+                        "4": "var(--chart-4)",
+                        "5": "var(--chart-5)",
+                    }
+                },
+                fontFamily: {
+                    sans: ["var(--font-sans)"],
+                    serif: ["var(--font-serif)"],
+                    mono: ["var(--font-mono)"],
+                }
+            },
+        }
+    };
+    </script>
+    <link href="https://fonts.googleapis.com/css2?family=Roboto:wght@300;400;500;700&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/icon?family=Material+Icons" rel="stylesheet">
+    <style>
+        :root {
+            --background: hsl(0 0% 100%);
+            --foreground: hsl(222.2 84% 4.9%);
+            --card: hsl(0 0% 100%);
+            --card-foreground: hsl(222.2 84% 4.9%);
+            --popover: hsl(0 0% 100%);
+            --popover-foreground: hsl(222.2 84% 4.9%);
+            --primary: hsl(210 79% 46%);
+            --primary-foreground: hsl(210 40% 98%);
+            --secondary: hsl(187 71% 38%);
+            --secondary-foreground: hsl(210 40% 98%);
+            --muted: hsl(210 40% 96%);
+            --muted-foreground: hsl(215.4 16.3% 46.9%);
+            --accent: hsl(210 40% 94%);
+            --accent-foreground: hsl(222.2 84% 4.9%);
+            --destructive: hsl(0 84.2% 60.2%);
+            --destructive-foreground: hsl(210 40% 98%);
+            --border: hsl(214.3 31.8% 91.4%);
+            --input: hsl(214.3 31.8% 91.4%);
+            --ring: hsl(210 79% 46%);
+            --radius: 8px;
+            --chart-1: hsl(210 79% 46%);
+            --chart-2: hsl(187 71% 38%);
+            --chart-3: hsl(142 71% 45%);
+            --chart-4: hsl(39 84% 56%);
+            --chart-5: hsl(346 84% 61%);
+            --font-sans: 'Roboto', system-ui, sans-serif;
+        }
+        
+        body {
+            font-family: var(--font-sans);
+        }
+        
+        .sidebar-item:hover {
+            background-color: hsl(210 40% 94%);
+        }
+        
+        .sidebar-item.active {
+            background-color: hsl(210 79% 46%);
+            color: white;
+        }
+        
+        .stat-card {
+            transition: transform 0.2s ease, box-shadow 0.2s ease;
+        }
+        
+        .stat-card:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+        }
+    </style>
+</head>
+<body class="bg-muted min-h-screen">
+    <!-- @COMPONENT: AdminDashboard [Main dashboard container] -->
+    <div class="flex h-screen bg-background">
+        <!-- @COMPONENT: Sidebar [Navigation sidebar] -->
+        <div class="w-64 bg-card shadow-lg border-r border-border">
+            <div class="p-6 border-b border-border">
+                <div class="flex items-center space-x-3">
+                    <div class="w-10 h-10 bg-primary rounded-lg flex items-center justify-center">
+                        <span class="material-icons text-primary-foreground text-xl">construction</span>
+                    </div>
+                    <div>
+                        <h1 class="text-lg font-bold text-foreground">NEMO Moscow</h1>
+                        <p class="text-sm text-muted-foreground">Bot Admin</p>
+                    </div>
+                </div>
+            </div>
+            
+            <nav class="mt-6">
+                <div class="px-3">
+                    <div class="sidebar-item active flex items-center px-3 py-2 rounded-md cursor-pointer mb-1" data-event="click:switchTab" data-implementation="Switch to dashboard view">
+                        <span class="material-icons mr-3 text-xl">dashboard</span>
+                        <span class="font-medium">Обзор</span>
+                    </div>
+                    <div class="sidebar-item flex items-center px-3 py-2 rounded-md cursor-pointer mb-1" data-event="click:switchTab" data-implementation="Switch to users management">
+                        <span class="material-icons mr-3 text-xl">people</span>
+                        <span class="font-medium">Пользователи</span>
+                    </div>
+                    <div class="sidebar-item flex items-center px-3 py-2 rounded-md cursor-pointer mb-1" data-event="click:switchTab" data-implementation="Switch to AI agents monitoring">
+                        <span class="material-icons mr-3 text-xl">smart_toy</span>
+                        <span class="font-medium">ИИ Агенты</span>
+                    </div>
+                    <div class="sidebar-item flex items-center px-3 py-2 rounded-md cursor-pointer mb-1" data-event="click:switchTab" data-implementation="Switch to broadcast management">
+                        <span class="material-icons mr-3 text-xl">campaign</span>
+                        <span class="font-medium">Рассылки</span>
+                    </div>
+                    <div class="sidebar-item flex items-center px-3 py-2 rounded-md cursor-pointer mb-1" data-event="click:switchTab" data-implementation="Switch to payments tracking">
+                        <span class="material-icons mr-3 text-xl">payments</span>
+                        <span class="font-medium">Платежи</span>
+                    </div>
+                    <div class="sidebar-item flex items-center px-3 py-2 rounded-md cursor-pointer mb-1" data-event="click:switchTab" data-implementation="Switch to referral system">
+                        <span class="material-icons mr-3 text-xl">share</span>
+                        <span class="font-medium">Рефералы</span>
+                    </div>
+                    <div class="sidebar-item flex items-center px-3 py-2 rounded-md cursor-pointer mb-1" data-event="click:switchTab" data-implementation="Switch to bot settings">
+                        <span class="material-icons mr-3 text-xl">settings</span>
+                        <span class="font-medium">Настройки</span>
+                    </div>
+                </div>
+            </nav>
+        </div>
+        <!-- @END_COMPONENT: Sidebar -->
+        
+        <!-- @COMPONENT: MainContent [Main dashboard content area] -->
+        <div class="flex-1 overflow-auto">
+            <!-- @COMPONENT: Header [Top header bar] -->
+            <header class="bg-card border-b border-border px-6 py-4">
+                <div class="flex items-center justify-between">
+                    <div>
+                        <h2 class="text-2xl font-bold text-foreground">Панель управления</h2>
+                        <p class="text-muted-foreground">Telegram Bot NEMO Moscow</p>
+                    </div>
+                    <div class="flex items-center space-x-4">
+                        <div class="flex items-center space-x-2 text-sm">
+                            <div class="w-3 h-3 bg-green-500 rounded-full"></div>
+                            <span class="text-muted-foreground">Бот онлайн</span>
+                        </div>
+                        <button class="bg-primary text-primary-foreground px-4 py-2 rounded-md hover:bg-primary/90 transition-colors" data-event="click:refreshData" data-implementation="Refresh dashboard data">
+                            <span class="material-icons mr-2 text-sm">refresh</span>
+                            Обновить
+                        </button>
+                    </div>
+                </div>
+            </header>
+            <!-- @END_COMPONENT: Header -->
+            
+            <!-- @COMPONENT: StatsOverview [Key metrics cards] -->
+            <div class="p-6">
+                <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
+                    <div class="stat-card bg-card rounded-lg border border-border p-6 cursor-pointer" data-implementation="Click to view detailed user analytics">
+                        <div class="flex items-center justify-between">
+                            <div>
+                                <p class="text-muted-foreground text-sm font-medium">Всего пользователей</p>
+                                <p class="text-2xl font-bold text-foreground" data-bind="stats.totalUsers">2,847</p>
+                            </div>
+                            <div class="bg-blue-100 p-3 rounded-full">
+                                <span class="material-icons text-blue-600">people</span>
+                            </div>
+                        </div>
+                        <div class="flex items-center mt-4 text-sm">
+                            <span class="text-green-600 font-medium">+12.5%</span>
+                            <span class="text-muted-foreground ml-2">за неделю</span>
+                        </div>
+                    </div>
+                    
+                    <div class="stat-card bg-card rounded-lg border border-border p-6 cursor-pointer" data-implementation="Click to view subscription details">
+                        <div class="flex items-center justify-between">
+                            <div>
+                                <p class="text-muted-foreground text-sm font-medium">Подписчики канала</p>
+                                <p class="text-2xl font-bold text-foreground" data-bind="stats.subscribers">1,934</p>
+                            </div>
+                            <div class="bg-green-100 p-3 rounded-full">
+                                <span class="material-icons text-green-600">verified</span>
+                            </div>
+                        </div>
+                        <div class="flex items-center mt-4 text-sm">
+                            <span class="text-green-600 font-medium">+8.3%</span>
+                            <span class="text-muted-foreground ml-2">за неделю</span>
+                        </div>
+                    </div>
+                    
+                    <div class="stat-card bg-card rounded-lg border border-border p-6 cursor-pointer" data-implementation="Click to view AI usage analytics">
+                        <div class="flex items-center justify-between">
+                            <div>
+                                <p class="text-muted-foreground text-sm font-medium">ИИ запросов/неделя</p>
+                                <p class="text-2xl font-bold text-foreground" data-bind="stats.aiRequests">4,562</p>
+                            </div>
+                            <div class="bg-purple-100 p-3 rounded-full">
+                                <span class="material-icons text-purple-600">smart_toy</span>
+                            </div>
+                        </div>
+                        <div class="flex items-center mt-4 text-sm">
+                            <span class="text-green-600 font-medium">+23.1%</span>
+                            <span class="text-muted-foreground ml-2">за неделю</span>
+                        </div>
+                    </div>
+                    
+                    <div class="stat-card bg-card rounded-lg border border-border p-6 cursor-pointer" data-implementation="Click to view revenue details">
+                        <div class="flex items-center justify-between">
+                            <div>
+                                <p class="text-muted-foreground text-sm font-medium">Доход/месяц</p>
+                                <p class="text-2xl font-bold text-foreground" data-bind="stats.revenue">₽84,320</p>
+                            </div>
+                            <div class="bg-yellow-100 p-3 rounded-full">
+                                <span class="material-icons text-yellow-600">attach_money</span>
+                            </div>
+                        </div>
+                        <div class="flex items-center mt-4 text-sm">
+                            <span class="text-green-600 font-medium">+15.7%</span>
+                            <span class="text-muted-foreground ml-2">за месяц</span>
+                        </div>
+                    </div>
+                </div>
+                <!-- @END_COMPONENT: StatsOverview -->
+                
+                <!-- @COMPONENT: MainDashboardContent [Charts and tables section] -->
+                <div class="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-8">
+                    <!-- @COMPONENT: UsageChart [AI agents usage chart] -->
+                    <div class="bg-card rounded-lg border border-border p-6">
+                        <div class="flex items-center justify-between mb-4">
+                            <h3 class="text-lg font-semibold text-foreground">Использование ИИ агентов</h3>
+                            <select class="text-sm border border-border rounded px-3 py-1" data-implementation="Filter chart by time period">
+                                <option>7 дней</option>
+                                <option>30 дней</option>
+                                <option>90 дней</option>
+                            </select>
+                        </div>
+                        <div class="h-64 bg-muted rounded flex items-center justify-center" data-implementation="Chart component showing AI agent usage over time">
+                            <div class="text-center">
+                                <span class="material-icons text-4xl text-muted-foreground mb-2">bar_chart</span>
+                                <p class="text-muted-foreground">График использования ИИ агентов</p>
+                                <p class="text-sm text-muted-foreground">Надзорщик: 60% | Дизайнер: 40%</p>
+                            </div>
+                        </div>
+                    </div>
+                    <!-- @END_COMPONENT: UsageChart -->
+                    
+                    <!-- @COMPONENT: RecentActivity [Recent user activity feed] -->
+                    <div class="bg-card rounded-lg border border-border p-6">
+                        <h3 class="text-lg font-semibold text-foreground mb-4">Активность пользователей</h3>
+                        <div class="space-y-4">
+                            <!-- @MAP: recentActivities.map(activity => ( -->
+                            <div class="flex items-center space-x-3 p-3 bg-accent rounded-lg" data-mock="true">
+                                <div class="w-8 h-8 bg-primary rounded-full flex items-center justify-center">
+                                    <span class="material-icons text-primary-foreground text-sm">person</span>
+                                </div>
+                                <div class="flex-1">
+                                    <p class="text-sm font-medium text-foreground" data-bind="activity.user">Иван К.</p>
+                                    <p class="text-xs text-muted-foreground" data-bind="activity.action">Использовал ИИ-Надзорщик</p>
+                                </div>
+                                <span class="text-xs text-muted-foreground" data-bind="activity.time">2 мин назад</span>
+                            </div>
+                            
+                            <div class="flex items-center space-x-3 p-3 bg-accent rounded-lg" data-mock="true">
+                                <div class="w-8 h-8 bg-secondary rounded-full flex items-center justify-center">
+                                    <span class="material-icons text-secondary-foreground text-sm">palette</span>
+                                </div>
+                                <div class="flex-1">
+                                    <p class="text-sm font-medium text-foreground" data-bind="activity.user">Мария С.</p>
+                                    <p class="text-xs text-muted-foreground" data-bind="activity.action">Создала дизайн-проект</p>
+                                </div>
+                                <span class="text-xs text-muted-foreground" data-bind="activity.time">5 мин назад</span>
+                            </div>
+                            
+                            <div class="flex items-center space-x-3 p-3 bg-accent rounded-lg" data-mock="true">
+                                <div class="w-8 h-8 bg-green-500 rounded-full flex items-center justify-center">
+                                    <span class="material-icons text-white text-sm">payment</span>
+                                </div>
+                                <div class="flex-1">
+                                    <p class="text-sm font-medium text-foreground" data-bind="activity.user">Алексей М.</p>
+                                    <p class="text-xs text-muted-foreground" data-bind="activity.action">Купил +10 запросов</p>
+                                </div>
+                                <span class="text-xs text-muted-foreground" data-bind="activity.time">8 мин назад</span>
+                            </div>
+                            <!-- @END_MAP )) -->
+                        </div>
+                        <button class="w-full mt-4 text-primary text-sm font-medium hover:text-primary/80 transition-colors" data-event="click:viewAllActivity" data-implementation="Show detailed activity log">
+                            Показать всю активность
+                        </button>
+                    </div>
+                    <!-- @END_COMPONENT: RecentActivity -->
+                </div>
+                
+                <!-- @COMPONENT: BroadcastSection [Broadcast management interface] -->
+                <div class="bg-card rounded-lg border border-border p-6 mb-8">
+                    <div class="flex items-center justify-between mb-6">
+                        <h3 class="text-lg font-semibold text-foreground">Управление рассылками</h3>
+                        <button class="bg-primary text-primary-foreground px-4 py-2 rounded-md hover:bg-primary/90 transition-colors" data-event="click:createBroadcast" data-implementation="Open broadcast creation modal">
+                            <span class="material-icons mr-2 text-sm">add</span>
+                            Создать рассылку
+                        </button>
+                    </div>
+                    
+                    <div class="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
+                        <div class="p-4 border border-border rounded-lg">
+                            <h4 class="font-medium text-foreground mb-2">Все пользователи</h4>
+                            <p class="text-2xl font-bold text-primary" data-bind="broadcast.allUsers">2,847</p>
+                            <p class="text-sm text-muted-foreground">Всего в боте</p>
+                        </div>
+                        <div class="p-4 border border-border rounded-lg">
+                            <h4 class="font-medium text-foreground mb-2">Подписчики</h4>
+                            <p class="text-2xl font-bold text-secondary" data-bind="broadcast.subscribers">1,934</p>
+                            <p class="text-sm text-muted-foreground">Подписаны на канал</p>
+                        </div>
+                        <div class="p-4 border border-border rounded-lg">
+                            <h4 class="font-medium text-foreground mb-2">Активные</h4>
+                            <p class="text-2xl font-bold text-green-600" data-bind="broadcast.activeUsers">1,532</p>
+                            <p class="text-sm text-muted-foreground">Активность 7 дней</p>
+                        </div>
+                    </div>
+                    
+                    <div class="border border-border rounded-lg overflow-hidden">
+                        <div class="bg-muted px-4 py-3 border-b border-border">
+                            <h4 class="font-medium text-foreground">Последние рассылки</h4>
+                        </div>
+                        <div class="divide-y divide-border">
+                            <!-- @MAP: broadcasts.map(broadcast => ( -->
+                            <div class="p-4 flex items-center justify-between" data-mock="true">
+                                <div class="flex-1">
+                                    <p class="font-medium text-foreground" data-bind="broadcast.title">Новые возможности ИИ-Дизайнера</p>
+                                    <div class="flex items-center space-x-4 mt-1">
+                                        <span class="text-sm text-muted-foreground" data-bind="broadcast.sentTo">Отправлено: 1,534 чел.</span>
+                                        <span class="text-sm text-muted-foreground" data-bind="broadcast.delivered">Доставлено: 1,521 чел.</span>
+                                        <span class="text-sm text-muted-foreground" data-bind="broadcast.date">15.01.2024</span>
+                                    </div>
+                                </div>
+                                <div class="flex items-center space-x-2">
+                                    <span class="px-2 py-1 text-xs bg-green-100 text-green-800 rounded">Отправлена</span>
+                                    <button class="text-muted-foreground hover:text-foreground" data-event="click:viewBroadcast" data-implementation="View broadcast details">
+                                        <span class="material-icons text-sm">visibility</span>
+                                    </button>
+                                </div>
+                            </div>
+                            
+                            <div class="p-4 flex items-center justify-between" data-mock="true">
+                                <div class="flex-1">
+                                    <p class="font-medium text-foreground" data-bind="broadcast.title">Скидка на дополнительные запросы</p>
+                                    <div class="flex items-center space-x-4 mt-1">
+                                        <span class="text-sm text-muted-foreground" data-bind="broadcast.sentTo">Отправлено: 892 чел.</span>
+                                        <span class="text-sm text-muted-foreground" data-bind="broadcast.delivered">Доставлено: 884 чел.</span>
+                                        <span class="text-sm text-muted-foreground" data-bind="broadcast.date">12.01.2024</span>
+                                    </div>
+                                </div>
+                                <div class="flex items-center space-x-2">
+                                    <span class="px-2 py-1 text-xs bg-green-100 text-green-800 rounded">Отправлена</span>
+                                    <button class="text-muted-foreground hover:text-foreground" data-event="click:viewBroadcast" data-implementation="View broadcast details">
+                                        <span class="material-icons text-sm">visibility</span>
+                                    </button>
+                                </div>
+                            </div>
+                            <!-- @END_MAP )) -->
+                        </div>
+                    </div>
+                </div>
+                <!-- @END_COMPONENT: BroadcastSection -->
+                
+                <!-- @COMPONENT: QuickActions [Quick action buttons] -->
+                <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+                    <button class="bg-card border border-border rounded-lg p-6 text-left hover:shadow-md transition-shadow" data-event="click:viewUsers" data-implementation="Navigate to user management">
+                        <div class="flex items-center space-x-3">
+                            <div class="bg-blue-100 p-3 rounded-full">
+                                <span class="material-icons text-blue-600">group</span>
+                            </div>
+                            <div>
+                                <h4 class="font-medium text-foreground">Пользователи</h4>
+                                <p class="text-sm text-muted-foreground">Управление аккаунтами</p>
+                            </div>
+                        </div>
+                    </button>
+                    
+                    <button class="bg-card border border-border rounded-lg p-6 text-left hover:shadow-md transition-shadow" data-event="click:viewAI" data-implementation="Navigate to AI monitoring">
+                        <div class="flex items-center space-x-3">
+                            <div class="bg-purple-100 p-3 rounded-full">
+                                <span class="material-icons text-purple-600">psychology</span>
+                            </div>
+                            <div>
+                                <h4 class="font-medium text-foreground">ИИ Мониторинг</h4>
+                                <p class="text-sm text-muted-foreground">Статистика агентов</p>
+                            </div>
+                        </div>
+                    </button>
+                    
+                    <button class="bg-card border border-border rounded-lg p-6 text-left hover:shadow-md transition-shadow" data-event="click:viewPayments" data-implementation="Navigate to payments dashboard">
+                        <div class="flex items-center space-x-3">
+                            <div class="bg-green-100 p-3 rounded-full">
+                                <span class="material-icons text-green-600">credit_card</span>
+                            </div>
+                            <div>
+                                <h4 class="font-medium text-foreground">Платежи</h4>
+                                <p class="text-sm text-muted-foreground">Транзакции и выручка</p>
+                            </div>
+                        </div>
+                    </button>
+                    
+                    <button class="bg-card border border-border rounded-lg p-6 text-left hover:shadow-md transition-shadow" data-event="click:botSettings" data-implementation="Navigate to bot configuration">
+                        <div class="flex items-center space-x-3">
+                            <div class="bg-orange-100 p-3 rounded-full">
+                                <span class="material-icons text-orange-600">tune</span>
+                            </div>
+                            <div>
+                                <h4 class="font-medium text-foreground">Настройки</h4>
+                                <p class="text-sm text-muted-foreground">Конфигурация бота</p>
+                            </div>
+                        </div>
+                    </button>
+                </div>
+                <!-- @END_COMPONENT: QuickActions -->
+            </div>
+        </div>
+        <!-- @END_COMPONENT: MainContent -->
+    </div>
+    <!-- @END_COMPONENT: AdminDashboard -->
+    
+    <!-- @COMPONENT: Modal [Create broadcast modal] -->
+    <div id="broadcastModal" class="fixed inset-0 bg-black bg-opacity-50 hidden items-center justify-center z-50" data-implementation="Modal for creating new broadcasts">
+        <div class="bg-card rounded-lg p-6 w-full max-w-2xl mx-4 max-h-[90vh] overflow-y-auto">
+            <div class="flex items-center justify-between mb-6">
+                <h3 class="text-xl font-bold text-foreground">Создать рассылку</h3>
+                <button class="text-muted-foreground hover:text-foreground" data-event="click:closeModal" data-implementation="Close modal">
+                    <span class="material-icons">close</span>
+                </button>
+            </div>
+            
+            <form class="space-y-6" data-implementation="Form for creating broadcasts with validation">
+                <div>
+                    <label class="block text-sm font-medium text-foreground mb-2">Заголовок рассылки</label>
+                    <input type="text" class="w-full px-3 py-2 border border-border rounded-md focus:ring-2 focus:ring-primary focus:border-primary" placeholder="Введите заголовок" data-bind="form.title">
+                </div>
+                
+                <div>
+                    <label class="block text-sm font-medium text-foreground mb-2">Сообщение</label>
+                    <textarea rows="4" class="w-full px-3 py-2 border border-border rounded-md focus:ring-2 focus:ring-primary focus:border-primary" placeholder="Текст сообщения..." data-bind="form.message"></textarea>
+                </div>
+                
+                <div>
+                    <label class="block text-sm font-medium text-foreground mb-2">Аудитория</label>
+                    <select class="w-full px-3 py-2 border border-border rounded-md focus:ring-2 focus:ring-primary focus:border-primary" data-bind="form.audience">
+                        <option value="all">Все пользователи (2,847)</option>
+                        <option value="subscribers">Только подписчики (1,934)</option>
+                        <option value="active">Активные пользователи (1,532)</option>
+                        <option value="paying">Платящие пользователи (342)</option>
+                    </select>
+                </div>
+                
+                <div class="flex items-center space-x-4">
+                    <label class="flex items-center">
+                        <input type="checkbox" class="mr-2" data-bind="form.sendNow">
+                        <span class="text-sm text-foreground">Отправить сейчас</span>
+                    </label>
+                    <label class="flex items-center">
+                        <input type="checkbox" class="mr-2" data-bind="form.trackClicks">
+                        <span class="text-sm text-foreground">Отслеживать переходы</span>
+                    </label>
+                </div>
+                
+                <div class="flex justify-end space-x-3 pt-4 border-t border-border">
+                    <button type="button" class="px-4 py-2 text-muted-foreground border border-border rounded-md hover:bg-accent transition-colors" data-event="click:closeModal" data-implementation="Cancel broadcast creation">
+                        Отмена
+                    </button>
+                    <button type="submit" class="px-4 py-2 bg-primary text-primary-foreground rounded-md hover:bg-primary/90 transition-colors" data-event="click:createBroadcast" data-implementation="Create and send broadcast">
+                        Создать рассылку
+                    </button>
+                </div>
+            </form>
+        </div>
+    </div>
+    <!-- @END_COMPONENT: Modal -->
+    
+    <script>
+        // TODO: Implement dashboard functionality including:
+        // - Real-time data updates
+        // - User management operations  
+        // - AI agent monitoring
+        // - Broadcast creation and management
+        // - Payment tracking
+        // - Referral system management
+        // - Bot configuration updates
+        
+        (function() {
+            // Modal functionality
+            const modal = document.getElementById('broadcastModal');
+            
+            function openModal() {
+                modal.classList.remove('hidden');
+                modal.classList.add('flex');
+            }
+            
+            function closeModal() {
+                modal.classList.add('hidden');
+                modal.classList.remove('flex');
+            }
+            
+            // Event listeners for modal triggers
+            document.addEventListener('click', function(e) {
+                if (e.target.closest('[data-event="click:createBroadcast"]')) {
+                    openModal();
+                }
+                if (e.target.closest('[data-event="click:closeModal"]')) {
+                    closeModal();
+                }
+            });
+            
+            // Close modal on backdrop click
+            modal.addEventListener('click', function(e) {
+                if (e.target === modal) {
+                    closeModal();
+                }
+            });
+            
+            // Sidebar navigation
+            document.querySelectorAll('.sidebar-item').forEach(item => {
+                item.addEventListener('click', function() {
+                    document.querySelectorAll('.sidebar-item').forEach(i => i.classList.remove('active'));
+                    this.classList.add('active');
+                });
+            });
+        })();
+    </script>
+</body>
+</html>
