@@ -308,6 +308,7 @@ bot.on(message("text"), (ctx, next) => onDefCardEditText(ctx, next));
 
 // Поток мастера
 bot.start(handleStart);
+bot.command("menu", handleStart);
 bot.on(message("text"), onDefectText);
 bot.action(/^def_cat:.+$/, onDefCategory);
 bot.action(/^def_sev:.+$/, onDefSeverity);

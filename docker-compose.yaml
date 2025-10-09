@@ -1,33 +1,38 @@
-version: "3.9"
-
+# compose v2 не требует ключа `version`, поэтому его опускаем
 services:
   app:
     build:
       context: .
       dockerfile: Dockerfile
-      target: runner
+      target: runner              # как у тебя было
     container_name: nemo_pub_app
     restart: always
     env_file:
       - .env
     environment:
-      NODE_ENV: production
+      NODE_ENV: development       # dev-режим, как на Replit
       PORT: 3000
-      # при использовании внешнего Postgres оставь только DATABASE_URL в .env
+      CHOKIDAR_USEPOLLING: "true" # стабильнее вотчинг в контейнере
+      WATCHPACK_POLLING: "true"
+      PUPPETEER_EXECUTABLE_PATH: /usr/bin/chromium
+      PUPPETEER_SKIP_DOWNLOAD: "true" 
     ports:
       - "3000:3000"
     depends_on:
       db:
         condition: service_healthy
-    healthcheck:
-      # важно: используем process.env.PORT, а не ${PORT}
-      test: ["CMD", "node", "-e", "fetch(`http://localhost:${process.env.PORT||3000}/health`).then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
-      interval: 20s
-      timeout: 5s
-      retries: 5
-      start_period: 20s
-    command: ["npm", "run", "start"]  # start -> node dist/server/bootstrap.js
-
+    # В dev у тебя стартует vite/tsx — healthcheck обычно лишний; вернёшь при необходимости
+    # healthcheck:
+    #   test: ["CMD-SHELL", "wget -qO- http://localhost:3000/health >/dev/null 2>&1 || exit 1"]
+    #   interval: 20s
+    #   timeout: 5s
+    #   retries: 5
+    #   start_period: 30s
+    command: ["npm", "run", "dev"]  # как на Replit
+    volumes:
+      - ./:/app                     # монтируем исходники
+      - node_modules:/app/node_modules # node_modules храним в отдельном volume
+    shm_size: "1gb"
   db:
     image: postgres:15
     container_name: nemo_pub_db
@@ -48,3 +53,5 @@ services:
 
 volumes:
   pgdata:
+  node_modules:
+

@@ -39,8 +39,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     console.log(`🔍 Token: ...${botToken.slice(-6)}`);
   }
 
-  // API Routes for Admin Panel
-  
+  // === API Routes for Admin Panel ===
   // Dashboard stats
   app.get("/api/dashboard/stats", async (req, res) => {
     try {
@@ -250,19 +249,39 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   const httpServer = createServer(app);
 
-  // Initialize bot
+  // === Initialize bot ===
   const isDeployed = process.env.REPLIT_DEPLOYMENT === '1' || process.env.NODE_ENV === 'production';
-  
+
+  // ⬅️ added: общий список слэш-команд (включая /menu)
+  const SLASH_COMMANDS = [
+    { command: 'start',     description: 'Главное меню' },
+    { command: 'menu',      description: 'Главное меню' }, // алиас /start
+    { command: 'new',       description: 'Новый дефект' },
+    { command: 'cancel',    description: 'Отменить ввод' },
+    { command: 'report',    description: 'Сформировать отчёт' },
+    { command: 'overdue',   description: 'Просроченные дефекты' },
+    { command: 'oncontrol', description: 'Дефекты на контроле' },
+    { command: 'ref',       description: 'Реферальная ссылка' },
+  ];
+
   if (isDeployed) {
     // Set webhook in production/deploy
     const baseUrl = process.env.WEBHOOK_URL?.replace(/\/$/, '') || ''; // Remove trailing slash
     const webhookUrl = `${baseUrl}/webhook/${process.env.BOT_TOKEN}`;
     console.log('🚀 Setting up webhook for production bot:', webhookUrl);
     bot.telegram.setWebhook(webhookUrl).catch(console.error);
+
+    // ⬅️ added: регистрация слэш-команд в проде
+    await bot.telegram.setMyCommands(SLASH_COMMANDS).catch(console.error);
+    console.log('✅ Slash-commands registered (deploy)');
   } else {
     console.log('ℹ️  Production bot @Nemo_designer_bot работает только в Deploy среде');
     console.log('💡 Для тестирования используйте @BOT_TOKEN_PREVIEW_BOT');
     console.log('🚀 Чтобы активировать @Nemo_designer_bot, нужно сделать Deploy приложения');
+
+    // ⬅️ added: регистрация слэш-команд в дев/превью
+    await bot.telegram.setMyCommands(SLASH_COMMANDS).catch(console.error);
+    console.log('✅ Slash-commands registered (dev)');
     
     // Use polling in development
     console.log('🔧 Removing existing webhook before starting polling...');
@@ -279,7 +298,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
           console.error('❌ Failed to start bot:', error);
           
           // Дополнительная диагностика для 409 ошибок
-          if (error.response?.error_code === 409) {
+          if ((error as any).response?.error_code === 409) {
             console.log('🔍 409 Conflict detected with token ending in:', botToken?.slice(-6));
             console.log('💡 Possible causes:');
             console.log('  1. Deploy environment also uses this token');
@@ -298,7 +317,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       });
   }
 
-  // AI Settings endpoints
+  // === AI Settings endpoints ===
   app.get("/api/ai/settings", async (req, res) => {
     try {
       res.json(getCurrentAISettings());

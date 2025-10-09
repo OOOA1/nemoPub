@@ -2,12 +2,14 @@
 import { fileURLToPath } from "url";
 import PDFDocument from "pdfkit";
 import ExcelJS from "exceljs";
+// используем установленный системный Chromium через puppeteer
 import puppeteer from "puppeteer";
 import fs from "fs";
 import path from "path";
+import type { Context } from "telegraf";
 const __filename = fileURLToPath(import.meta.url);
 const __dirname2 = path.dirname(__filename);
-import type { Context } from "telegraf";
+
 import {
   getReportStats,
   getReportByCategory,
@@ -27,7 +29,24 @@ function fmtDate(d: Date) {
   return `${y}-${m}-${day}`;
 }
 
-/** Рендер диаграммы (Chart.js) через Puppeteer без нативных модулей */
+/** Находим путь к системному Chromium в контейнере */
+function resolveChromePath(): string | undefined {
+  const fromEnv = process.env.PUPPETEER_EXECUTABLE_PATH;
+  const candidates = [
+    fromEnv,
+    "/usr/bin/chromium",
+    "/usr/bin/chromium-browser",
+    "/usr/bin/google-chrome",
+  ].filter(Boolean) as string[];
+  for (const p of candidates) {
+    try {
+      if (p && fs.existsSync(p)) return p;
+    } catch {}
+  }
+  return fromEnv; // пусть Puppeteer попробует сам, если указали ENV
+}
+
+/** Рендер диаграммы (Chart.js) через Puppeteer */
 async function renderChart(
   width: number,
   height: number,
@@ -54,19 +73,30 @@ async function renderChart(
 </html>`;
 
   const browser = await puppeteer.launch({
-    headless: true,
-    args: ["--no-sandbox", "--disable-setuid-sandbox"],
+    headless: "new",
+    executablePath: resolveChromePath(),
+    args: [
+      "--no-sandbox",
+      "--disable-setuid-sandbox",
+      "--disable-dev-shm-usage",
+      "--disable-gpu",
+      "--no-zygote",
+      "--no-first-run",
+      "--no-default-browser-check",
+      "--user-data-dir=/tmp/puppeteer", // отдельный профиль
+      "--window-size=1280,720",
+    ],
   });
 
   try {
     const page = await browser.newPage();
     await page.setViewport({ width, height, deviceScaleFactor: 1 });
     await page.setContent(html, { waitUntil: "networkidle0" });
-    // Небольшая задержка, чтобы Chart.js дорисовал
+    // Небольшая задержка, чтобы Chart.js дорисовал (особенно на слабых CPU)
     await new Promise((res) => setTimeout(res, 200));
-
-    const raw = await page.screenshot({ type: "png" }); // Buffer | Uint8Array
+    const raw = await page.screenshot({ type: "png" });
     const buf = Buffer.isBuffer(raw) ? raw : Buffer.from(raw as Uint8Array);
+    await page.close();
     return buf;
   } finally {
     await browser.close();
@@ -78,7 +108,6 @@ export async function generateReportPDF(
   period: Period,
 ): Promise<Buffer> {
   // === Найти Unicode-шрифт (кириллица) ===
-  // Положи .ttf в assets/fonts/ (например, Roboto.ttf). Добавлен и твой ofont.ru_Roboto.ttf.
   const FONT_CANDIDATES = [
     path.join(__dirname2, "../assets/fonts/Roboto.ttf"),
     path.join(__dirname2, "../assets/fonts/ofont.ru_Roboto.ttf"),
@@ -120,7 +149,6 @@ export async function generateReportPDF(
 
   // === Создать PDF и подключить шрифт ===
   const doc = new PDFDocument({ size: "A4", margin: 36 });
-
   const chunks: Buffer[] = [];
   doc.on("data", (c: Buffer) => chunks.push(c));
   const done: Promise<Buffer> = new Promise((resolve) =>
@@ -159,19 +187,19 @@ export async function generateReportPDF(
   // Диаграмма: категории
   doc.fontSize(14).text("Распределение по категориям");
   doc.moveDown(0.2);
-  doc.image(
-    Buffer.isBuffer(pieCat) ? pieCat : Buffer.from(pieCat),
-    { fit: [520, 250], align: "center" },
-  );
+  doc.image(Buffer.isBuffer(pieCat) ? pieCat : Buffer.from(pieCat), {
+    fit: [520, 250],
+    align: "center",
+  });
   doc.addPage();
 
   // Диаграмма: критичность
   doc.fontSize(14).text("Распределение по критичности");
   doc.moveDown(0.2);
-  doc.image(
-    Buffer.isBuffer(barSev) ? barSev : Buffer.from(barSev),
-    { fit: [520, 250], align: "center" },
-  );
+  doc.image(Buffer.isBuffer(barSev) ? barSev : Buffer.from(barSev), {
+    fit: [520, 250],
+    align: "center",
+  });
   doc.addPage();
 
   // Коллаж критичных
@@ -189,10 +217,11 @@ export async function generateReportPDF(
     const item = topCritical[i];
 
     let buf: Buffer | null = null;
-    if (item.photoFileId) {
+    if ((item as any).photoFileId) {
       try {
-        // getFileLink -> URL -> ArrayBuffer -> Buffer
-        const link = await (ctx as any).telegram.getFileLink(item.photoFileId);
+        const link = await (ctx as any).telegram.getFileLink(
+          (item as any).photoFileId,
+        );
         const res = await (globalThis.fetch as any)(link.toString());
         const arr = await res.arrayBuffer();
         buf = Buffer.from(arr);
@@ -218,11 +247,7 @@ export async function generateReportPDF(
 
     const cx = x + col * (cellW + cellPad);
     if (buf) {
-      doc.image(buf, cx, y, {
-        width: cellW,
-        height: cellH,
-        fit: [cellW, cellH],
-      });
+      doc.image(buf, cx, y, { width: cellW, height: cellH, fit: [cellW, cellH] });
     } else {
       doc.rect(cx, y, cellW, cellH).stroke();
       doc.fontSize(10).text("нет фото", cx + 10, y + cellH / 2 - 6);
@@ -230,8 +255,8 @@ export async function generateReportPDF(
     doc
       .fontSize(10)
       .text(
-        `#${item.humanId} • ${item.object ?? ""} • ${fmtDate(
-          new Date(item.createdAt),
+        `#${(item as any).humanId} • ${(item as any).object ?? ""} • ${fmtDate(
+          new Date((item as any).createdAt),
         )}`,
         cx,
         y + cellH + 4,
@@ -285,3 +310,4 @@ export async function generateReportExcel(period: Period): Promise<Buffer> {
   const buf = await wb.xlsx.writeBuffer();
   return Buffer.from(buf);
 }
+
