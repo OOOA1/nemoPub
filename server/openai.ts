@@ -2,15 +2,19 @@ import OpenAI from "openai";
 import { GoogleGenAI, Modality } from "@google/genai";
 import { URL } from "url";
 
+
+
+
+
+
 // the newest OpenAI model is "gpt-5" which was released August 7, 2025. do not change this unless explicitly requested by the user
 const openai = new OpenAI({ 
   apiKey: process.env.OPENAI_API_KEY || process.env.OPENAI_API_KEY_ENV_VAR || "default_key"
 });
 
-// Laozhang.ai client for image generation
-const laozhangClient = new OpenAI({
-  apiKey: process.env.LAOZHANG_API_KEY || "default_key",
-  baseURL: "https://api.laozhang.ai/v1"
+const polzaClient = new OpenAI({
+  apiKey: process.env.POLZA_AI_API_KEY!,               
+  baseURL: process.env.POLZA_API_BASE,                 
 });
 
 // Google Gemini client for native image generation
@@ -138,101 +142,6 @@ function validateImageUrl(url: string): void {
   }
 }
 
-export async function generateDesignConcept(
-  imageUrl: string, 
-  style: string, 
-  priority: string, 
-  accent: string,
-  model: string = "gpt-image-1"
-): Promise<DesignResult> {
-  try {
-    // Validate the image URL to prevent SSRF attacks
-    validateImageUrl(imageUrl);
-    console.log(`🎨 Starting image transformation with ${model}`);
-    console.log('📷 Original image URL:', imageUrl);
-    console.log('🎯 Style:', style, 'Priority:', priority, 'Accent:', accent);
-    
-    const transformationPrompt = `Transform this room to ${style} style with ${accent} accents. Keep same layout, change furniture and colors to match ${style} design.`;
-    let generatedImageUrl: string | undefined;
-
-    if (model === "gpt-image-1" || model === "polza-nano-banana") {
-      // Use Polza Gemini via laozhang.ai
-      if (!process.env.LAOZHANG_API_KEY) {
-        throw new Error('LAOZHANG_API_KEY not found - Polza Gemini API required');
-      }
-      
-      console.log(`🚀 Using Polza Gemini via laozhang.ai for ${model} model...`);
-      
-      try {
-        generatedImageUrl = await generateImageWithLaozhangGemini(imageUrl, style, accent, transformationPrompt);
-        
-        if (generatedImageUrl) {
-          console.log(`✅ SUCCESS: Polza Gemini generated image for ${model}`);
-        }
-      } catch (error: any) {
-        console.log(`❌ Polza Gemini failed:`, error.message);
-        throw new Error(`Polza Gemini API error: ${error.message}`);
-      }
-
-    } else if (model === "gemini-2.5-flash-image-preview") {
-      // ONLY use native Gemini API - no fallback to laozhang  
-      if (!process.env.GEMINI_API_KEY) {
-        throw new Error('GEMINI_API_KEY not found - native Gemini API required');
-      }
-      
-      console.log('🚀 Using NATIVE Google Gemini API with your secret key...');
-      
-      // Add timeout to prevent hanging requests (90 seconds)
-      const timeoutPromise = new Promise<never>((_, reject) => {
-        setTimeout(() => reject(new Error('Request timeout after 90 seconds')), 90000);
-      });
-      
-      generatedImageUrl = await Promise.race([
-        generateImageWithNativeGemini(imageUrl, transformationPrompt),
-        timeoutPromise
-      ]);
-      
-      if (!generatedImageUrl) {
-        throw new Error('Native Gemini API failed to generate image');
-      }
-    }
-
-    if (generatedImageUrl) {
-      console.log('🖼️ Image format:', generatedImageUrl.startsWith('data:') ? 'base64' : 'URL');
-      console.log('🖼️ Image size:', generatedImageUrl.length, 'characters');
-    } else {
-      console.log('❌ No generated image URL available');
-    }
-
-    return {
-      description: `Дизайн-концепция в стиле ${style} с акцентом на ${accent}`,
-      styleElements: [`${style} стиль`, `Приоритет: ${priority}`, `Акцент: ${accent}`],
-      colorPalette: [`Цветовая схема ${style}`],
-      recommendations: [`Применен стиль ${style}`, `Учтен приоритет ${priority}`, `Добавлены ${accent} акценты`],
-      imageUrl: generatedImageUrl
-    };
-    
-  } catch (error) {
-    console.error(`Error with ${model}:`, error);
-    
-    // If quota is insufficient or invalid size, return concept without image
-    if (error && typeof error === 'object' && 'code' in error && 
-        (error.code === 'insufficient_quota' || error.code === 'invalid_value')) {
-      console.log('⚠️ Quota insufficient, returning design concept without image');
-      return {
-        description: `Дизайн-концепция в стиле ${style} с акцентом на ${accent}`,
-        styleElements: [`${style} стиль`, `Приоритет: ${priority}`, `Акцент: ${accent}`],
-        colorPalette: [`Цветовая схема ${style}`],
-        recommendations: [`Применен стиль ${style}`, `Учтен приоритет ${priority}`, `Добавлены ${accent} акценты`],
-        imageUrl: undefined // No image due to quota limits
-      };
-    }
-    
-    throw new Error(`Ошибка при создании дизайн-проекта с ${model}`);
-  }
-}
-
-
 // Native Gemini image generation function
 async function generateImageWithNativeGemini(imageUrl: string, transformationPrompt: string): Promise<string | undefined> {
   try {
@@ -325,102 +234,6 @@ async function generateImageWithNativeGemini(imageUrl: string, transformationPro
   }
 }
 
-
-// Laozhang Gemini fallback function  
-async function generateImageWithLaozhangGemini(imageUrl: string, style: string, accent: string, transformationPrompt: string): Promise<string | undefined> {
-  try {
-    console.log('📋 Transformation prompt:', transformationPrompt);
-
-    // Retry logic for rate limits
-    let attempts = 0;
-    const maxAttempts = 3;
-    let response;
-
-    while (attempts < maxAttempts) {
-      try {
-        console.log(`🚀 Calling laozhang chat completions with gemini-2.5-flash-image-preview (attempt ${attempts + 1})...`);
-        
-        response = await laozhangClient.chat.completions.create({
-          model: "gemini-2.5-flash-image-preview",
-          messages: [
-            {
-              role: "user",
-              content: [
-                {
-                  type: "text", 
-                  text: `EDIT: Transform this room to ${style} style with ${accent} focus. Keep same layout but change furniture, colors, materials to match ${style} aesthetic.`
-                },
-                {
-                  type: "image_url",
-                  image_url: {
-                    url: imageUrl
-                  }
-                }
-              ]
-            }
-          ],
-          max_tokens: 800
-        });
-        break; // Success, exit retry loop
-
-      } catch (error: any) {
-        attempts++;
-        console.log(`❌ Attempt ${attempts} failed:`, error.message);
-
-        if (error.status === 429 && attempts < maxAttempts) {
-          const delay = Math.pow(2, attempts) * 1000; // Exponential backoff
-          console.log(`⏳ Rate limit hit, waiting ${delay}ms before retry...`);
-          await new Promise(resolve => setTimeout(resolve, delay));
-          continue;
-        } else {
-          throw error; // Re-throw if not recoverable or max attempts reached
-        }
-      }
-    }
-
-    if (response) {
-      console.log('📋 gemini-2.5-flash-image-preview response received');
-      console.log('🔍 Response status:', 'Success');
-      console.log('🔍 Response content length:', response.choices?.[0]?.message?.content?.length || 0);
-    } else {
-      console.log('❌ No response received from gemini-2.5-flash-image-preview');
-      throw new Error('No response from Gemini API');
-    }
-    
-    // Check if response contains base64 image data
-    const messageContent = response.choices?.[0]?.message?.content;
-    if (messageContent) {
-      // Look for base64 image data in the response
-      const base64Match = messageContent.match(/data:image\/[^;]+;base64,([A-Za-z0-9+/=]+)/);
-      if (base64Match) {
-        console.log('✅ Image edited successfully with gemini-2.5-flash-image-preview (base64 format)');
-        console.log('📏 Base64 length:', base64Match[1].length);
-        return base64Match[0];
-      } else {
-        console.log('⚠️ No base64 image found in gemini response, checking for URL...');
-        // Check for URL patterns
-        const urlMatch = messageContent.match(/https?:\/\/[^\s]+\.(jpg|jpeg|png|webp)/i);
-        if (urlMatch) {
-          console.log('✅ Image URL found in gemini response');
-          console.log('🔗 Image URL:', urlMatch[0]);
-          return urlMatch[0];
-        } else {
-          console.log('⚠️ No image found in gemini-2.5-flash-image-preview response');
-          console.log('📋 Response content preview:', messageContent.substring(0, 200) + '...');
-        }
-      }
-    } else {
-      console.log('⚠️ No content in gemini-2.5-flash-image-preview response');
-    }
-    
-    return undefined;
-    
-  } catch (error) {
-    console.error('❌ Error with laozhang Gemini API:', error);
-    throw error;
-  }
-}
-
 export function formatInspectionReport(result: InspectionResult): string {
   let report = '';
   
@@ -493,4 +306,282 @@ export function formatDesignReport(result: DesignResult): string {
   }
   
   return report;
+}
+
+// ===== POLZA helpers =====
+const POLZA_BASE = process.env.POLZA_API_BASE || "https://api.polza.ai/api/v1";
+const POLZA_KEY  = process.env.POLZA_AI_API_KEY;
+
+function ensurePolzaEnv() {
+  if (!POLZA_KEY) throw new Error("POLZA_AI_API_KEY is not set");
+}
+
+async function polzaFetch(path: string, init: RequestInit, timeoutMs = 30000): Promise<Response> {
+  ensurePolzaEnv();
+  const ctrl = new AbortController();
+  const t = setTimeout(() => ctrl.abort(), timeoutMs);
+  try {
+    return await fetch(`${POLZA_BASE}${path}`, {
+      ...init,
+      headers: {
+        "Authorization": `Bearer ${POLZA_KEY}`,
+        "Content-Type": "application/json",
+        ...(init.headers || {}),
+      },
+      signal: ctrl.signal,
+    });
+  } finally {
+    clearTimeout(t);
+  }
+}
+
+async function toImageBase64(url: string, maxBytes = 20 * 1024 * 1024): Promise<{ mime: string; b64: string } | null> {
+  try {
+    const r = await fetch(url);
+    if (!r.ok) return null;
+    const ct = r.headers.get("content-type") || "";
+    if (!ct.startsWith("image/")) return null;
+    const buf = Buffer.from(await r.arrayBuffer());
+    if (buf.length > maxBytes) return null;
+    return { mime: ct.split(";")[0], b64: buf.toString("base64") };
+  } catch {
+    return null;
+  }
+}
+
+function extractResultUrlStrict(payload: any): string | undefined {
+  // по доке обычно либо result.images[0].url, либо images[0].url, либо url/resultUrl
+  if (payload?.result?.images?.[0]?.url) return payload.result.images[0].url;
+  if (payload?.images?.[0]?.url) return payload.images[0].url;
+  if (typeof payload?.resultUrl === "string") return payload.resultUrl;
+  if (typeof payload?.url === "string") return payload.url;
+  const out = payload?.output;
+  if (Array.isArray(out)) {
+    if (typeof out[0] === "string") return out[0];
+    if (out[0]?.url) return out[0].url;
+  }
+  return undefined;
+}
+
+let __modelsCache: any[] | null = null;
+async function listPolzaModels(): Promise<any[]> {
+  if (__modelsCache) return __modelsCache;
+  const r = await polzaFetch("/models", { method: "GET" }, 20000);
+  if (!r.ok) throw new Error(`Polza /models ${r.status}: ${await r.text().catch(()=>r.statusText)}`);
+  const j = await r.json();
+  const models = Array.isArray(j) ? j : Array.isArray(j?.data) ? j.data : [];
+  __modelsCache = models;
+  return models;
+}
+
+async function pickNanoBananaModel(): Promise<string> {
+  const models = await listPolzaModels();
+  const envName = process.env.POLZA_IMAGE_MODEL?.trim();
+  const idOf = (m: any) => m?.id || m?.name || m?.model || "";
+
+  if (envName && models.some(m => idOf(m) === envName)) return envName;
+
+  const want = models.find(m => /nano|banana|gemini.*2\.5.*image|flash.*image/i.test(idOf(m)));
+  if (want) return idOf(want);
+
+  const imageCap = models.find(m => {
+    const t = (m?.type || m?.category || "").toString().toLowerCase();
+    const caps = JSON.stringify(m?.capabilities ?? m?.modes ?? m?.tags ?? "").toLowerCase();
+    return t.includes("image") || caps.includes("image");
+  });
+  if (imageCap) return idOf(imageCap);
+
+  throw new Error("В Polza не найдено ни одной модели для изображений. Проверь /models в своём аккаунте.");
+}
+
+function extractResultUrl(payload: any): string | undefined {
+  if (!payload) return;
+  if (typeof payload.resultUrl === "string") return payload.resultUrl;
+  if (typeof payload.url === "string") return payload.url;
+  if (payload?.result?.images?.[0]?.url) return payload.result.images[0].url;
+  if (payload?.images?.[0]?.url) return payload.images[0].url;
+  const out = payload?.output;
+  if (Array.isArray(out)) {
+    if (typeof out[0] === "string") return out[0];
+    if (out[0]?.url) return out[0].url;
+  }
+  return;
+}
+
+function extractErrorMessage(data: any): string {
+  return (
+    data?.error?.message ||
+    data?.error?.description ||
+    data?.error?.code ||
+    data?.message ||
+    data?.result?.error ||
+    (Array.isArray(data?.errors) && data.errors[0]?.message) ||
+    (Array.isArray(data?.details) && data.details[0]?.message) ||
+    (typeof data === "string" ? data : "") ||
+    "unknown error"
+  );
+}
+
+async function tryDownloadToBase64(url: string, timeoutMs = 30000): Promise<{ mime: string; b64: string } | null> {
+  try {
+    const ctrl = new AbortController();
+    const to = setTimeout(() => ctrl.abort(), timeoutMs);
+    const res = await fetch(url, { signal: ctrl.signal });
+    clearTimeout(to);
+    if (!res.ok) return null;
+    const ct = res.headers.get("content-type") || "";
+    if (!ct.startsWith("image/")) return null;
+    const buf = Buffer.from(await res.arrayBuffer());
+    if (buf.length > 20 * 1024 * 1024) return null; // ≤20MB
+    const b64 = buf.toString("base64");
+    return { mime: ct.split(";")[0], b64 };
+  } catch {
+    return null;
+  }
+}
+
+// ===== Полза: создание + корректный поллинг статуса =====
+export async function generateImageWithPolza(
+  imageUrl: string,
+  style: string,
+  accent: string | undefined,
+  transformationPrompt: string
+): Promise<string | undefined> {
+  ensurePolzaEnv();
+
+  // 1) модель — берём строго из .env или дефолт по докам
+  const model = (process.env.POLZA_IMAGE_MODEL || "nano-banana").trim();
+
+  // 2) формируем промпт
+  const prompt =
+    `EDIT: Transform this room to "${style}". ` +
+    (accent ? `Add accent: ${accent}. ` : "") +
+    transformationPrompt;
+
+  // 3) формируем тело — строго по POST /images/generations
+  // Обычно Nano-Banana требует: model, prompt, image_url (или images[]), width/height (квадрат 1024 безопасен).
+  const baseBody: Record<string, any> = {
+    model,
+    prompt,
+    image_url: imageUrl,
+    width: 1024,
+    height: 1024,
+    // при необходимости можно добавить: steps, guidance, image_strength, negative_prompt и т.п.
+  };
+
+  // Небольшой фолбэк: если внешний URL недоступен, попробуем data/base64
+  const inline = await toImageBase64(imageUrl);
+  const body = inline
+    ? { ...baseBody, image_base64: inline.b64 } // многие инсталляции принимают image_base64
+    : baseBody;
+
+  // 4) создаём задачу
+  const create = await polzaFetch("/images/generations", {
+    method: "POST",
+    body: JSON.stringify(body),
+  }, 30000);
+
+  const createText = !create.ok ? await create.text().catch(() => "") : "";
+  if (!create.ok) {
+    throw new Error(`Polza create ${create.status}: ${createText || create.statusText}`);
+  }
+
+  const createJson = await create.json() as { id?: string; requestId?: string };
+  const id = createJson.id || createJson.requestId;
+  if (!id) throw new Error("Polza: в ответе создания нет id/requestId");
+
+  // 5) опрос статуса — строго GET /images/{id}
+  const started = Date.now();
+  const MAX_WAIT = 120_000;
+  const SLEEP = 1500;
+
+  while (Date.now() - started < MAX_WAIT) {
+    const st = await polzaFetch(`/images/${encodeURIComponent(id)}`, { method: "GET" }, 20000);
+    const txt = !st.ok ? await st.text().catch(() => "") : "";
+    const data = st.ok ? await st.json().catch(() => null) : null;
+
+    if (!st.ok) {
+      // иногда встречается альтернативный путь
+      if (st.status === 404) {
+        const alt = await polzaFetch(`/images/generations/${encodeURIComponent(id)}`, { method: "GET" }, 20000);
+        const altTxt = !alt.ok ? await alt.text().catch(() => "") : "";
+        const altData = alt.ok ? await alt.json().catch(() => null) : null;
+        if (!alt.ok) throw new Error(`Polza status ${alt.status}: ${altTxt || "unknown error"}`);
+        const status = String(altData?.status || "").toUpperCase();
+        if (status === "SUCCEEDED" || status === "SUCCESS" || status === "DONE" || status === "COMPLETED") {
+          const url = extractResultUrlStrict(altData) || extractResultUrlStrict(altData?.result);
+          if (!url) throw new Error(`Polza success but no URL: ${JSON.stringify(altData).slice(0, 800)}`);
+          return url;
+        }
+        if (status === "FAILED" || status === "ERROR") {
+          throw new Error(`Polza generation failed: ${JSON.stringify(altData).slice(0, 800)}`);
+        }
+        await new Promise(r => setTimeout(r, SLEEP));
+        continue;
+      }
+      throw new Error(`Polza status ${st.status}: ${txt || "unknown error"}`);
+    }
+
+    const status = String(data?.status || "").toUpperCase();
+
+    if (status === "SUCCEEDED" || status === "SUCCESS" || status === "DONE" || status === "COMPLETED") {
+      const url = extractResultUrlStrict(data) || extractResultUrlStrict(data?.result);
+      if (!url) throw new Error(`Polza success but no URL: ${JSON.stringify(data).slice(0, 800)}`);
+      return url;
+    }
+    if (status === "FAILED" || status === "ERROR") {
+      // тут у твоём логе как раз просто {"id": "...", "status": "FAILED"} — вернём это тело целиком для ясности
+      throw new Error(`Polza generation failed: ${JSON.stringify(data).slice(0, 800)}`);
+    }
+
+    await new Promise(r => setTimeout(r, SLEEP));
+  }
+
+  throw new Error("Polza: истек таймаут ожидания результата");
+}
+
+// ===== твоя основная функция (Polza как основной путь) =====
+export async function generateDesignConcept(
+  imageUrl: string,
+  style: string,
+  priority: string,
+  accent: string,
+  model: string = "gpt-image-1"
+): Promise<DesignResult> {
+  try {
+    validateImageUrl(imageUrl);
+    const transformationPrompt =
+      `Transform this room to ${style} style with ${accent || "no"} accents. ` +
+      `Keep layout; change furniture & colors to match ${style}. ` +
+      `Priority: ${priority}. Use realistic materials, consistent lighting, correct perspective.`;
+
+    console.log("🚀 Using Polza (Nano-Banana) …");
+    const generatedImageUrl = await generateImageWithPolza(imageUrl, style, accent, transformationPrompt);
+
+    return {
+      description: `Дизайн-концепция в стиле ${style} с акцентом на ${accent}`,
+      styleElements: [`Стиль: ${style}`, `Приоритет: ${priority}`, `Акцент: ${accent}`],
+      colorPalette: [`Цветовая схема для стиля ${style}`],
+      recommendations: [
+        `Применён стиль ${style}`,
+        `Учтён приоритет: ${priority}`,
+        `Добавлены акценты: ${accent}`,
+      ],
+      imageUrl: generatedImageUrl,
+    };
+  } catch (err: any) {
+    console.error("Designer (Polza) error:", err);
+    // мягкий фолбэк — вернём текст без картинки
+    return {
+      description: `Дизайн-концепция в стиле ${style} (без изображения: ${String(err?.message || err)})`,
+      styleElements: [`Стиль: ${style}`, `Приоритет: ${priority}`, `Акцент: ${accent}`],
+      colorPalette: [`Цветовая схема для стиля ${style}`],
+      recommendations: [
+        `Применён стиль ${style}`,
+        `Учтён приоритет: ${priority}`,
+        `Добавлены акценты: ${accent}`,
+      ],
+      imageUrl: undefined,
+    };
+  }
 }
