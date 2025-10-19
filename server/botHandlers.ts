@@ -437,6 +437,19 @@ export async function handleReferral(ctx: Context) {
   );
 }
 
+function validateAndNormalizeRuPhone(input: string): string | null {
+  const raw = input.trim();
+
+  // Вариант 1: +79XXXXXXXXX
+  if (/^\+79\d{9}$/.test(raw)) return raw;
+
+  // Вариант 2: 89XXXXXXXXX  -> нормализуем в +79XXXXXXXXX
+  const digits = raw.replace(/\D/g, "");
+  if (/^89\d{9}$/.test(digits)) return `+7${digits.slice(1)}`;
+
+  return null;
+}
+
 export async function handleLimitsCheck(ctx: Context) {
   if (ctx.callbackQuery) {
     await ctx.answerCbQuery();
@@ -1943,13 +1956,18 @@ export async function handleLeadFormText(ctx: Context, next: () => Promise<void>
 
   // телефон → Шаг 1 (тип объекта)
   if (state === "lead:phone") {
-    const phone = text.replace(/[^\d+]/g, "");
-    if (!/^\+?\d{10,15}$/.test(phone)) {
-      await (ctx as any).reply("Не распознал номер. Пример: +7 999 123-45-67. Попробуйте ещё раз:");
+    const phone = validateAndNormalizeRuPhone(text);
+    if (!phone) {
+      await (ctx as any).reply(
+        "Пожалуйста, укажите телефон в одном из форматов:\n" +
+        "• +79XXXXXXXXX (например, +79991234567)\n" +
+        "• 89XXXXXXXXX (например, 89991234567)"
+      );
       return;
     }
+
     const data = await getLeadData(userId);
-    data.phone = phone;
+    data.phone = phone; // уже нормализовано в +79...
     await setLeadData(userId, data);
 
     await setFlowState(userId, "quiz:kind");
@@ -1987,22 +2005,26 @@ export async function handleLeadFormText(ctx: Context, next: () => Promise<void>
     await clearLeadData(userId);
     await (ctx as any).reply("✅ Спасибо! Заявка отправлена. Мы свяжемся с вами.");
 
-    sendLeadEmail({
-      tgId: ctx.from!.id,
-      username: ctx.from!.username,
-      name: data.name,
-      phone: data.phone,
-      message:
-        `Квиз:\n` +
-        `- Тип объекта: ${data.property?.kind}\n` +
-        `- Площадь (диапазон): ${data.property?.area_band}\n` +
-        `- Дизайн-проект: ${data.design_project}\n` +
-        `- Тип ремонта: ${data.renovation?.type}\n` +
-        `- Адрес: ${data.property?.address}\n` +
-        `- Тип помещения: ${data.property?.space_type}\n` +
-        `- Площадь точная: ${data.property?.area_exact}`,
-      source: "telegram-consultation",
-    }).catch(err => console.error("sendLeadEmail failed", err));
+    await sendLeadEmail({
+        tgId: ctx.from!.id,
+        username: ctx.from!.username,
+        name: data.name,
+        phone: data.phone,
+        // опционально: если хочешь оставить короткий комментарий пользователя – можешь положить сюда
+        message: undefined,
+        source: "telegram-consultation",
+        quiz: {
+          property: {
+            kind: data.property?.kind,           // 'new_flat' | 'old_flat' | 'house' | 'commercial'
+            area_band: data.property?.area_band, // 'lt50' | '50_100' | 'gt100'
+            address: data.property?.address,     // строка адреса
+            space_type: data.property?.space_type, // 'apartment' | 'office' | 'retail' | 'shop' | 'other'
+            area_exact: data.property?.area_exact as number | undefined, // число
+          },
+          design_project: data.design_project,     // 'have' | 'none' | 'need'
+          renovation: { type: data.renovation?.type }, // 'rough' | 'cosmetic' | 'designer' | 'capital'
+        },
+    });
 
     return;
   }
