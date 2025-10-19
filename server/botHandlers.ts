@@ -2,6 +2,13 @@ import { Context } from 'telegraf';
 import { storage } from './storage';
 import { updateUserSubscriptionStatus } from './subscriptionChecker';
 import { getDefectPhotosAll } from "./storage";
+import { sendLeadEmail } from "./mailer";
+import { Markup } from "telegraf";
+
+import {
+  setFlowState, getFlowState, clearFlowState,
+  getLeadData, setLeadData, clearLeadData
+} from "./leadFlow";
 
 import {
   getDefectByHumanId,
@@ -133,7 +140,7 @@ export async function handleStart(ctx: Context) {
         [{ text: '📑 Отчёты', callback_data: 'reports' }],
         [{ text: 'ℹ️ Как мы работаем', callback_data: 'how_we_work' }],
         [{ text: '🌐 Перейти на сайт', callback_data: 'website' }, { text: '🗺 Наш офис', callback_data: 'office' }],
-        [{ text: '☎️ Оставить заявку', callback_data: 'leave_request' }],
+        [{ text: '☎️ Консультация специалиста', callback_data: 'leave_request' }],
       ]
       }
     }
@@ -192,9 +199,9 @@ export async function handleRenovation(ctx: Context) {
     {
       reply_markup: {
         inline_keyboard: [
-          [{ text: 'Что входит в ремонт', callback_data: 'renovation_includes' }],
+          // [{ text: 'Что входит в ремонт', callback_data: 'renovation_includes' }],
           [{ text: 'Как мы контролируем качество', callback_data: 'quality_control' }],
-          [{ text: 'Оставить заявку', callback_data: 'leave_request' }],
+          [{ text: 'Консультация специалиста', callback_data: 'leave_request' }],
           [{ text: '🏠 Главное меню', callback_data: 'start' }]
         ]
       }
@@ -390,32 +397,15 @@ export async function handleHowWeWork(ctx: Context) {
   );
 }
 
+
+
 export async function handleLeaveRequest(ctx: Context) {
-  if (ctx.callbackQuery) {
-    await ctx.answerCbQuery();
-  }
-  
-  const user = (ctx as any).user;
-  if (!user) return;
-
-  ctx.reply(
-    '📝 Заполните форму, и наш инженер свяжется с вами:\n\n' +
-    '👤 Введите ваше имя:',
-    {
-      reply_markup: {
-        inline_keyboard: [
-          [{ text: '🏠 Главное меню', callback_data: 'start' }]
-        ]
-      }
-    }
+  await setFlowState(ctx.from!.id, "lead:name");
+  await clearLeadData(ctx.from!.id);
+  if ("answerCbQuery" in ctx) await (ctx as any).answerCbQuery();
+  await (ctx as any).reply(
+    "📝 Заполните форму для консультации специалиста.\n\n👤 Введите ваше имя:"
   );
-
-  // Set form state
-  await storage.setBotSetting(`lead_form_${user.id}`, JSON.stringify({
-    step: 'name',
-    interest: 'repair',
-    source: 'main_menu'
-  }));
 }
 
 export async function handleReferral(ctx: Context) {
@@ -632,7 +622,7 @@ export async function handleRenovationIncludes(ctx: Context) {
       reply_markup: {
         inline_keyboard: [
           [{ text: 'Как мы контролируем качество', callback_data: 'quality_control' }],
-          [{ text: 'Оставить заявку', callback_data: 'leave_request' }],
+          [{ text: 'Консультация специалиста', callback_data: 'leave_request' }],
           [{ text: '🏠 Главное меню', callback_data: 'start' }]
         ]
       }
@@ -657,8 +647,8 @@ export async function handleQualityControl(ctx: Context) {
     {
       reply_markup: {
         inline_keyboard: [
-          [{ text: 'Что входит в ремонт', callback_data: 'renovation_includes' }],
-          [{ text: 'Оставить заявку', callback_data: 'leave_request' }],
+          // [{ text: 'Что входит в ремонт', callback_data: 'renovation_includes' }],
+          [{ text: 'Консультация специалиста', callback_data: 'leave_request' }],
           [{ text: '🏠 Главное меню', callback_data: 'start' }]
         ]
       }
@@ -1932,4 +1922,214 @@ export async function onDefCardEditText(ctx: Context, next: () => Promise<void>)
   } catch (err) {
     try { console.error("[def-card-edit][text]", err); } catch {}
   }
+}
+
+export async function handleLeadFormText(ctx: Context, next: () => Promise<void>) {
+  if (!ctx.from || !("message" in ctx) || !(ctx as any).message?.text) return next();
+  const text = (ctx as any).message.text.trim();
+  if (text.startsWith("/")) return next();
+
+  const userId = ctx.from.id;
+  const state = await getFlowState(userId);
+  if (!state) return next();
+
+  // имя → телефон
+  if (state === "lead:name") {
+    await setLeadData(userId, { name: text });
+    await setFlowState(userId, "lead:phone");
+    await (ctx as any).reply("📞 Укажите номер телефона (например, +7 999 123-45-67):");
+    return;
+  }
+
+  // телефон → Шаг 1 (тип объекта)
+  if (state === "lead:phone") {
+    const phone = text.replace(/[^\d+]/g, "");
+    if (!/^\+?\d{10,15}$/.test(phone)) {
+      await (ctx as any).reply("Не распознал номер. Пример: +7 999 123-45-67. Попробуйте ещё раз:");
+      return;
+    }
+    const data = await getLeadData(userId);
+    data.phone = phone;
+    await setLeadData(userId, data);
+
+    await setFlowState(userId, "quiz:kind");
+    await (ctx as any).reply("🏢 Шаг 1. Тип объекта:", kbKind());
+    return;
+  }
+
+  // адрес (свободный ввод) → Шаг 5.2 (тип помещения)
+  if (state === "quiz:address") {
+    const v = text.slice(0, 200);
+    const data = await getLeadData(userId);
+    data.property = data.property || {};
+    data.property.address = v;
+    await setLeadData(userId, data);
+
+    await setFlowState(userId, "quiz:space_type");
+    await (ctx as any).reply("🏷️ Уточните тип помещения:", kbSpaceType());
+    return;
+  }
+
+  // точная площадь (свободный ввод, число)
+  if (state === "quiz:area_exact") {
+    const n = normalizeArea(text);
+    if (n == null) {
+      await (ctx as any).reply("Введите площадь числом (1–2000 м²). Пример: 86.5");
+      return;
+    }
+    const data = await getLeadData(userId);
+    data.property = data.property || {};
+    data.property.area_exact = n;
+    await setLeadData(userId, data);
+
+    // завершение — письмо
+    await clearFlowState(userId);
+    await clearLeadData(userId);
+    await (ctx as any).reply("✅ Спасибо! Заявка отправлена. Мы свяжемся с вами.");
+
+    sendLeadEmail({
+      tgId: ctx.from!.id,
+      username: ctx.from!.username,
+      name: data.name,
+      phone: data.phone,
+      message:
+        `Квиз:\n` +
+        `- Тип объекта: ${data.property?.kind}\n` +
+        `- Площадь (диапазон): ${data.property?.area_band}\n` +
+        `- Дизайн-проект: ${data.design_project}\n` +
+        `- Тип ремонта: ${data.renovation?.type}\n` +
+        `- Адрес: ${data.property?.address}\n` +
+        `- Тип помещения: ${data.property?.space_type}\n` +
+        `- Площадь точная: ${data.property?.area_exact}`,
+      source: "telegram-consultation",
+    }).catch(err => console.error("sendLeadEmail failed", err));
+
+    return;
+  }
+
+  // на любой другой state — перестраховочный сброс
+  await clearFlowState(userId);
+  await clearLeadData(userId);
+  await (ctx as any).reply("Давайте начнём сначала: нажмите «Оставить заявку» ещё раз 🙌");
+}
+
+// Шаг 1: тип объекта
+export async function onQuizKind(ctx: Context) {
+  const userId = ctx.from!.id;
+  const kind = (ctx as any).match?.[1]; // new_flat | old_flat | house | commercial
+  const data = await getLeadData(userId);
+  data.property = data.property || {};
+  data.property.kind = kind;
+  await setLeadData(userId, data);
+
+  await setFlowState(userId, "quiz:area_band");
+  await (ctx as any).answerCbQuery();
+  await (ctx as any).editMessageReplyMarkup(); // убрать старые кнопки
+  await (ctx as any).reply("📐 Шаг 2. Площадь:", kbAreaBand());
+}
+
+// Шаг 2: диапазон площади
+export async function onQuizAreaBand(ctx: Context) {
+  const userId = ctx.from!.id;
+  const band = (ctx as any).match?.[1]; // lt50 | 50_100 | gt100
+  const data = await getLeadData(userId);
+  data.property = data.property || {};
+  data.property.area_band = band;
+  await setLeadData(userId, data);
+
+  await setFlowState(userId, "quiz:design");
+  await (ctx as any).answerCbQuery();
+  await (ctx as any).editMessageReplyMarkup();
+  await (ctx as any).reply("🧩 Шаг 3. Дизайн-проект:", kbDesign());
+}
+
+// Шаг 3: дизайн-проект
+export async function onQuizDesign(ctx: Context) {
+  const userId = ctx.from!.id;
+  const design = (ctx as any).match?.[1]; // have | none | need
+  const data = await getLeadData(userId);
+  data.design_project = design;
+  await setLeadData(userId, data);
+
+  await setFlowState(userId, "quiz:renovation_type");
+  await (ctx as any).answerCbQuery();
+  await (ctx as any).editMessageReplyMarkup();
+  await (ctx as any).reply("🔧 Шаг 4. Тип ремонта:", kbRenovation());
+}
+
+// Шаг 4: тип ремонта
+export async function onQuizRenovationType(ctx: Context) {
+  const userId = ctx.from!.id;
+  const rtype = (ctx as any).match?.[1]; // rough | cosmetic | designer | capital
+  const data = await getLeadData(userId);
+  data.renovation = data.renovation || {};
+  data.renovation.type = rtype;
+  await setLeadData(userId, data);
+
+  await setFlowState(userId, "quiz:address");
+  await (ctx as any).answerCbQuery();
+  await (ctx as any).editMessageReplyMarkup();
+  await (ctx as any).reply("📍 Шаг 5.1 — Укажите адрес (улица, дом, корпус/кв при наличии):");
+}
+
+// Шаг 5.2: тип помещения
+export async function onQuizSpaceType(ctx: Context) {
+  const userId = ctx.from!.id;
+  const space = (ctx as any).match?.[1]; // apartment | office | retail | shop | other
+  const data = await getLeadData(userId);
+  data.property = data.property || {};
+  data.property.space_type = space;
+  await setLeadData(userId, data);
+
+  await setFlowState(userId, "quiz:area_exact");
+  await (ctx as any).answerCbQuery();
+  await (ctx as any).editMessageReplyMarkup();
+  await (ctx as any).reply("📏 Введите точную площадь (число, м²):");
+}
+
+
+const kbKind = () =>
+  Markup.inlineKeyboard([
+    [Markup.button.callback("Квартира (новостройка)", "q_kind:new_flat")],
+    [Markup.button.callback("Квартира (вторичка)", "q_kind:old_flat")],
+    [Markup.button.callback("Дом / коттедж", "q_kind:house")],
+    [Markup.button.callback("Коммерческий объект", "q_kind:commercial")],
+  ]);
+
+const kbAreaBand = () =>
+  Markup.inlineKeyboard([
+    [Markup.button.callback("до 50 м²", "q_area:lt50")],
+    [Markup.button.callback("50–100 м²", "q_area:50_100")],
+    [Markup.button.callback("100+ м²", "q_area:gt100")],
+  ]);
+
+const kbDesign = () =>
+  Markup.inlineKeyboard([
+    [Markup.button.callback("Есть", "q_design:have")],
+    [Markup.button.callback("Нет", "q_design:none")],
+    [Markup.button.callback("Нужен", "q_design:need")],
+  ]);
+
+const kbRenovation = () =>
+  Markup.inlineKeyboard([
+    [Markup.button.callback("Черновой", "q_rtype:rough")],
+    [Markup.button.callback("Косметический", "q_rtype:cosmetic")],
+    [Markup.button.callback("Дизайнерский", "q_rtype:designer")],
+    [Markup.button.callback("Капитальный", "q_rtype:capital")],
+  ]);
+
+const kbSpaceType = () =>
+  Markup.inlineKeyboard([
+    [Markup.button.callback("квартира", "q_space:apartment")],
+    [Markup.button.callback("офис", "q_space:office")],
+    [Markup.button.callback("торговое помещение", "q_space:retail")],
+    [Markup.button.callback("магазин", "q_space:shop")],
+    [Markup.button.callback("другое", "q_space:other")],
+  ]);
+
+function normalizeArea(s: string): number | null {
+  const n = Number(String(s).replace(",", ".").replace(/[^\d.]/g, ""));
+  if (!isFinite(n)) return null;
+  if (n < 1 || n > 2000) return null;
+  return Math.round(n * 100) / 100;
 }

@@ -57,13 +57,16 @@ import {
   controlDueCustom,
   handleListsMenu,
   sendDefectsList, 
+  handleLeadFormText,
+  onQuizKind,
+  onQuizAreaBand,
+  onQuizDesign,
+  onQuizRenovationType,
+  onQuizSpaceType,
 } from "./botHandlers";
 import { handleDefReset, controlMenu, controlKeyFor, askDue, showDefectCard, registerListCommands } from "./botHandlers";
 import { ensureUser } from "./middlewares/ensureUser";
 import { registerRoleCommands } from "./roleHandlers";
-
-// + импортируй из botHandlers то, чем пользуешься
-import { /* ... */ } from "./botHandlers";
 
 // Import settings getter to avoid circular dependency
 import { getCurrentAISettings } from './aiSettings';
@@ -302,6 +305,22 @@ bot.action(/^report:(7d|30d):(pdf|xlsx)$/i, async (ctx) => {
   }
 });
 
+// Кнопка "Оставить заявку"
+bot.action("leave_request", handleLeaveRequest);
+
+// Ответы пользователя текстом во время формы заявки
+bot.on(message("text"), handleLeadFormText);
+
+// Квиз — ловим callback'и по префиксу
+bot.action(/^q_kind:(.+)$/, onQuizKind);
+bot.action(/^q_area:(.+)$/, onQuizAreaBand);
+bot.action(/^q_design:(.+)$/, onQuizDesign);
+bot.action(/^q_rtype:(.+)$/, onQuizRenovationType);
+bot.action(/^q_space:(.+)$/, onQuizSpaceType);
+
+// Ответы по форме заявки (СТАВИМ ВЫШЕ любых общих обработчиков текста)
+bot.on(message("text"), handleLeadFormText);
+
 // Перехват текстового ввода для редактирования существующей карточки
 // (расположи ЭТОТ хендлер ДО общих обработчиков текстов мастера, чтобы не перехватывалось мастером)
 bot.on(message("text"), (ctx, next) => onDefCardEditText(ctx, next));
@@ -441,7 +460,7 @@ bot.action('office', (ctx) => {
   }
   ctx.reply('🗺 Наш офис на Яндекс.Картах: https://yandex.ru/maps/org/nemo_moscow\n\nNEMO Moscow — ремонт под ключ, надзор и дизайн с гарантией.');
 });
-bot.action('leave_request', handleLeaveRequest);
+
 
 // Renovation detail handlers
 bot.action('renovation_includes', handleRenovationIncludes);
