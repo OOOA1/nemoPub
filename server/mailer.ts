@@ -84,105 +84,39 @@ function tgLink(username?: string, tgId?: number) {
   return '';
 }
 
-export async function sendLeadEmail(lead: LeadPayload) {
-  const to = process.env.LEAD_NOTIFY_TO || process.env.SMTP_USER!;
+export async function sendLeadEmail(lead: LeadPayload): Promise<boolean> {
+  const url = process.env.MAILER_URL;
+  if (!url) { console.error("MAILER_URL is not set"); return false; }
 
-  // собираем поля письма
-  const subjParts = [
-    lead.source?.toLowerCase().includes('consult') ? 'Консультация' : 'Заявка',
-    lead.name ? `— ${lead.name}` : '',
-    lead.phone ? `, ${lead.phone}` : '',
-  ].join(' ').replace(/\s+,/g, ',').trim();
+  const headers: Record<string, string> = { "content-type": "application/json" };
+  if (process.env.MAILER_TOKEN) headers.authorization = `Bearer ${process.env.MAILER_TOKEN}`;
 
-  const subject = subjParts || 'Новая заявка';
+  const subject = String(lead?.source || "").includes("consult")
+    ? "Консультация от Telegram-бота"
+    : "Заявка от Telegram-бота";
 
-  const q = lead.quiz || {};
+  const to = process.env.LEAD_NOTIFY_TO || undefined;
 
-  const rowsUser = `
-    <tr><td>Telegram</td><td>${tgLink(lead.username, lead.tgId)}</td></tr>
-    <tr><td>Имя</td><td>${esc(lead.name)}</td></tr>
-    <tr><td>Телефон</td><td>${telLink(lead.phone)}</td></tr>
-    ${lead.message ? `<tr><td>Комментарий</td><td>${esc(lead.message)}</td></tr>` : ''}
-    <tr><td>Источник</td><td>${esc(lead.source || 'telegram')}</td></tr>
-    <tr><td>Дата</td><td>${new Date().toLocaleString('ru-RU')}</td></tr>
-  `;
+  const ctrl = new AbortController();
+  const t = setTimeout(() => ctrl.abort(), 60000);
 
-  const rowsQuiz = `
-    ${
-      q.property?.kind
-        ? `<tr><td>Тип объекта</td><td>${RU.kind[q.property.kind]}</td></tr>`
-        : ''
+  try {
+    const res = await fetch(url, {
+      method: "POST",
+      headers,
+      body: JSON.stringify({ to, subject, lead }),
+      signal: ctrl.signal,
+    });
+    clearTimeout(t);
+    if (!res.ok) {
+      console.error("MAILER ERROR:", res.status, await res.text().catch(()=>""));
+      return false;
     }
-    ${
-      q.property?.area_band
-        ? `<tr><td>Площадь (диапазон)</td><td>${RU.areaBand[q.property.area_band]}</td></tr>`
-        : ''
+    return true;
+    } catch (err: any) {
+      clearTimeout(t);
+      console.error("MAILER REQUEST FAILED:", err?.message || err);
+      console.error("CAUSE:", err?.cause); // тут часто ECONNRESET/ETIMEDOUT/ECONNREFUSED
+      return false;
     }
-    ${
-      q.design_project
-        ? `<tr><td>Дизайн-проект</td><td>${RU.design[q.design_project]}</td></tr>`
-        : ''
-    }
-    ${
-      q.renovation?.type
-        ? `<tr><td>Тип ремонта</td><td>${RU.rtype[q.renovation.type]}</td></tr>`
-        : ''
-    }
-    ${q.property?.address ? `<tr><td>Адрес</td><td>${esc(q.property.address)}</td></tr>` : ''}
-    ${
-      q.property?.space_type
-        ? `<tr><td>Тип помещения</td><td>${RU.space[q.property.space_type]}</td></tr>`
-        : ''
-    }
-    ${
-      typeof q.property?.area_exact === 'number'
-        ? `<tr><td>Площадь точная</td><td>${q.property.area_exact}</td></tr>`
-        : ''
-    }
-  `;
-
-  const html = `
-  <div style="font-family: -apple-system, BlinkMacSystemFont, Segoe UI, Roboto, Helvetica, Arial, sans-serif; color:#111; line-height:1.45;">
-    <h2 style="margin:0 0 12px;">Новая заявка из Telegram</h2>
-
-    <table style="border-collapse: collapse; width:100%; max-width:720px;">
-      <thead>
-        <tr>
-          <th colspan="2" style="text-align:left; font-size:14px; color:#666; padding:8px 0;">Контакты</th>
-        </tr>
-      </thead>
-      <tbody>
-        ${rowsUser}
-      </tbody>
-    </table>
-
-    ${
-      rowsQuiz.replace(/\s/g, '') // если нет ни одной строки — не показываем блок
-        ? `
-      <div style="height:12px;"></div>
-      <table style="border-collapse: collapse; width:100%; max-width:720px;">
-        <thead>
-          <tr>
-            <th colspan="2" style="text-align:left; font-size:14px; color:#666; padding:8px 0;">Детали объекта</th>
-          </tr>
-        </thead>
-        <tbody>
-          ${rowsQuiz}
-        </tbody>
-      </table>`
-        : ''
-    }
-
-    <div style="margin-top:16px; font-size:12px; color:#888;">
-      Письмо сгенерировано автоматически ботом NEMO • Ответьте на это письмо, чтобы продолжить переписку с клиентом.
-    </div>
-  </div>
-  `;
-
-  await transporter.sendMail({
-    from: `"NEMO Bot" <${process.env.SMTP_USER}>`,
-    to,
-    subject,
-    html,
-  });
 }
