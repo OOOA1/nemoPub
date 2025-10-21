@@ -570,6 +570,26 @@ export class DatabaseStorage implements IStorage {
 
     return { rows, total: Number(total), limit, offset };
   }
+
+  async incrementUserPurchasedRequests(userId: string, delta: number) {
+    // совместимо и с this.db, и с импортированным db
+    const q = (this as any).db ?? db;
+
+    await q
+      .update(users)
+      .set({
+        totalPurchasedRequests: sql`${users.totalPurchasedRequests} + ${delta}`,
+      })
+      .where(eq(users.id, userId));
+
+    const rows = await q
+      .select()
+      .from(users)
+      .where(eq(users.id, userId))
+      .limit(1);
+
+    return rows[0] ?? null; // <— без вызова несуществующего this.getUserById
+  }
 }
 
 import {

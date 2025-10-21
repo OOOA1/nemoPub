@@ -72,6 +72,7 @@ import { registerRoleCommands } from "./roleHandlers";
 import { getCurrentAISettings } from './aiSettings';
 import { generateReportPDF, generateReportExcel } from './reports';
 
+
 // Two-bot system:
 // PREVIEW (Replit Workspace): BOT_TOKEN_DEV - новый бот для превью
 // DEPLOY (Replit Deploy): BOT_TOKEN - существующий бот для деплоя
@@ -712,6 +713,49 @@ bot.on(message('photo'), async (ctx, next) => {
   }
 
   return next();
+});
+
+// Заглушка покупки пакета на 10 фото
+bot.action("buy_pack_10", async (ctx) => {
+  try {
+    const tgUserId = ctx.from?.id;
+    if (!tgUserId) {
+      await ctx.answerCbQuery("Не удалось определить пользователя", { show_alert: true });
+      return;
+    }
+
+    // у тебя есть getUserByTelegramId — им и пользуемся
+    const user = await storage.getUserByTelegramId(String(tgUserId));
+    if (!user) {
+      await ctx.answerCbQuery("Пользователь не найден. Нажмите /start в боте.", { show_alert: true });
+      return;
+    }
+
+    // +10 покупок (заглушка «оплаты»)
+    const updated = await storage.incrementUserPurchasedRequests(user.id, 10);
+
+    await ctx.answerCbQuery("Оплата принята. Начисляем 10 фото…");
+
+    // показать актуальные лимиты
+    const weeklyInspector = await storage.getUserWeeklyRequests(user.id, "inspector");
+    const weeklyDesigner  = await storage.getUserWeeklyRequests(user.id, "designer");
+
+    const BASE_WEEKLY_LIMIT = Number(process.env.BASE_WEEKLY_LIMIT ?? 10);
+    const totalLimitNow = BASE_WEEKLY_LIMIT + (updated?.totalPurchasedRequests ?? 0);
+
+    await ctx.reply(
+      [
+        "✅ Начислено 10 фотографий.",
+        "",
+        `Текущий недельный лимит: ${totalLimitNow}`,
+        `• Использовано (инспектор): ${weeklyInspector}`,
+        `• Использовано (дизайнер): ${weeklyDesigner}`,
+      ].join("\n")
+    );
+  } catch (e) {
+    console.error("buy_pack_10 error", e);
+    await ctx.answerCbQuery("Ошибка при начислении. Попробуйте позже.", { show_alert: true });
+  }
 });
 
 // 2) Фото с подписью «Устранено #ID»

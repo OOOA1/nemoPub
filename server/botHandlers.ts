@@ -250,21 +250,18 @@ export async function handleInspector(ctx: Context) {
   const totalLimit = 10 + user.totalPurchasedRequests;
   
   if (weeklyRequests >= totalLimit) {
-    ctx.reply(
-      'Вы использовали все проверки на этой неделе.\n' +
-      `Использовано: ${weeklyRequests}/${totalLimit}\n\n` +
-      'Вы можете:\n' +
-      '— Докупить дополнительные проверки\n' +
-      '— Получить бонусные попытки, пригласив друзей\n\n' +
-      'NEMO Moscow — ремонт под ключ, надзор и дизайн с гарантией.',
+    await ctx.reply(
+      [
+        "⚠️ Недельный лимит исчерпан.",
+        "",
+        "Можно докупить ещё 10 фотографий в технадзоре за 990 ₽.",
+      ].join("\n"),
       {
         reply_markup: {
           inline_keyboard: [
-            [{ text: '💳 Докупить попытки', callback_data: 'buy_requests' }],
-            [{ text: '👥 Пригласить друзей', callback_data: 'referrals' }],
-            [{ text: '🏠 Главное меню', callback_data: 'start' }]
-          ]
-        }
+            [{ text: "Купить 10 фото — 990 ₽", callback_data: "buy_pack_10" }],
+          ],
+        },
       }
     );
     return;
@@ -327,29 +324,25 @@ export async function handleDesigner(ctx: Context) {
 
   // Check weekly limits
   const weeklyRequests = await storage.getUserWeeklyRequests(user.id, 'designer');
-  const totalLimit = 10 + user.totalPurchasedRequests;
+  const totalLimit = 1 + user.totalPurchasedRequests;
   
   if (weeklyRequests >= totalLimit) {
-    ctx.reply(
-      'Вы использовали все генерации на этой неделе.\n' +
-      `Использовано: ${weeklyRequests}/${totalLimit}\n\n` +
-      'Вы можете:\n' +
-      '— Докупить дополнительные попытки\n' +
-      '— Получить бонусные попытки, пригласив друзей\n\n' +
-      'NEMO Moscow — ремонт под ключ, надзор и дизайн с гарантией.',
+    await ctx.reply(
+      [
+        "⚠️ Недельный лимит исчерпан.",
+        "",
+        "Можно докупить ещё 10 фотографий в технадзоре за 990 ₽.",
+      ].join("\n"),
       {
         reply_markup: {
           inline_keyboard: [
-            [{ text: '💳 Докупить попытки', callback_data: 'buy_requests' }],
-            [{ text: '👥 Пригласить друзей', callback_data: 'referrals' }],
-            [{ text: '🏠 Главное меню', callback_data: 'start' }]
-          ]
-        }
+            [{ text: "Купить 10 фото — 990 ₽", callback_data: "buy_pack_10" }],
+          ],
+        },
       }
     );
     return;
   }
-
   // Start design quiz
   ctx.reply(
     '🎨 Ответьте на несколько вопросов и загрузите фото комнаты.\n' +
