@@ -247,7 +247,7 @@ export async function handleInspector(ctx: Context) {
 
   // Check weekly limits
   const weeklyRequests = await storage.getUserWeeklyRequests(user.id, 'inspector');
-  const totalLimit = 40 + user.totalPurchasedRequests;
+  const totalLimit = 10 + user.totalPurchasedRequests;
   
   if (weeklyRequests >= totalLimit) {
     ctx.reply(
@@ -327,7 +327,7 @@ export async function handleDesigner(ctx: Context) {
 
   // Check weekly limits
   const weeklyRequests = await storage.getUserWeeklyRequests(user.id, 'designer');
-  const totalLimit = 40 + user.totalPurchasedRequests;
+  const totalLimit = 10 + user.totalPurchasedRequests;
   
   if (weeklyRequests >= totalLimit) {
     ctx.reply(
@@ -463,7 +463,7 @@ export async function handleLimitsCheck(ctx: Context) {
     storage.getUserWeeklyRequests(user.id, 'designer')
   ]);
 
-  const baseLimit = 40;
+  const baseLimit = 10;
   const totalLimit = baseLimit + user.totalPurchasedRequests;
   
   ctx.reply(
