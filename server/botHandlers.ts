@@ -128,12 +128,13 @@ export async function handleStart(ctx: Context) {
   ctx.reply(
     '👋 Добро пожаловать в NEMO Moscow.\n' +
     'Мы занимаемся ремонтом под ключ, авторским надзором и дизайн-проектами.\n' +
+    '🛡️ ИИ-Технадзор — попробуй бесплатно.\n' + 
     'Работаем с 2011 года. Прозрачно. Стильно. С гарантией.',
     {
       reply_markup: {
       inline_keyboard: [
         [{ text: '🏗 Ремонт под ключ', callback_data: 'renovation' }],
-        [{ text: '👀 ИИ-Технадзор',    callback_data: 'inspector' }],
+        [{ text: '🛡️ ИИ-Технадзор',    callback_data: 'inspector' }],
         [{ text: '🎨 ИИ-Дизайнер',     callback_data: 'designer' }],
         [{ text: '📸 Фотофиксация дефекта', callback_data: 'defect_start' }],
         [{ text: "📋 Задачи", callback_data: "lists_menu" }],
@@ -2084,7 +2085,7 @@ export async function onQuizRenovationType(ctx: Context) {
   await setFlowState(userId, "quiz:address");
   await (ctx as any).answerCbQuery();
   await (ctx as any).editMessageReplyMarkup();
-  await (ctx as any).reply("📍 Шаг 5.1 — Укажите адрес (улица, дом, корпус/кв при наличии):");
+  await (ctx as any).reply("📍 Шаг 5.1 — Укажите адрес (улица, дом, корпус, квартира, торговое помещение, офис, магазин):");
 }
 
 // Шаг 5.2: тип помещения
